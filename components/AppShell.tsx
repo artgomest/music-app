@@ -94,7 +94,7 @@ export default function AppShell({
           </div>
 
           <div className="hidden lg:block flex-1 text-sm font-medium" style={{ color: "var(--muted-foreground)" }}>
-            {pathname === "/" ? "Music Import" : pathname === "/acervo" ? "Library" : pathname === "/profile" ? "User Profile" : "Events"}
+            {pathname === "/" ? "Music Import" : pathname === "/acervo" ? "Library" : pathname === "/profile" ? "User Profile" : "Dashboard"}
           </div>
 
           {/* Right icons */}
