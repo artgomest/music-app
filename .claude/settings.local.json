@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app@latest . --typescript --tailwind --app --no-src-dir --eslint --yes)",
+      "Bash(npx create-next-app@latest . --typescript --tailwind --app --no-src-dir --eslint --yes --name music-app)",
+      "Read(//c/Users/Arthur Esteves/Desktop/IBF/**)",
+      "Bash(npx create-next-app@latest music-app-temp --typescript --tailwind --app --no-src-dir --eslint --yes)",
+      "Bash(cp -r music-app-temp/. \"MUSIC APP/\")",
+      "Bash(rm -rf music-app-temp)",
+      "Bash(npm install:*)",
+      "Bash(npx shadcn@latest init --yes)",
+      "Bash(printf 'y\\\\ny\\\\n')",
+      "Bash(npx shadcn@latest init)",
+      "Bash(npx shadcn@latest add button input card badge skeleton --overwrite --yes)",
+      "Bash(node -e \"require\\(''''zod''''\\)\")",
+      "mcp__Claude_Preview__preview_start"
+    ]
+  }
+}

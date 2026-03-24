@@ -1,0 +1,74 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+
+datasource db {
+  provider = "sqlite"
+}
+
+
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  password      String
+  role          String    @default("musician") // "leader" | "musician"
+  instruments   String    @default("") // comma-separated
+  avatarUrl     String?
+  notes         String    @default("") // personal note pad
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  events        Event[]
+  songPlays     SongPlay[]
+}
+
+model Song {
+  id            String    @id @default(cuid())
+  title         String
+  artist        String
+  youtubeUrl    String
+  lyricsUrl     String    @default("")
+  lyrics        String    @default("")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  repertoireItems RepertoireItem[]
+  plays           SongPlay[]
+}
+
+model Event {
+  id            String    @id @default(cuid())
+  name          String    // e.g. "Culto Domingo Manhã"
+  date          DateTime
+  description   String    @default("")
+  createdById   String
+  createdBy     User      @relation(fields: [createdById], references: [id])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  repertoireItems RepertoireItem[]
+}
+
+model RepertoireItem {
+  id       String  @id @default(cuid())
+  eventId  String
+  event    Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  songId   String
+  song     Song    @relation(fields: [songId], references: [id])
+  key      String  @default("Original")
+  order    Int     @default(0)
+}
+
+model SongPlay {
+  id        String   @id @default(cuid())
+  songId    String
+  song      Song     @relation(fields: [songId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  eventId   String?
+  playedAt  DateTime @default(now())
+}
