@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
 import { fetchVideoTitle } from "@/lib/youtube";
 import { parseArtistAndSong } from "@/lib/parse-title";
-import { searchVagalume } from "@/lib/vagalume";
 import { generateSearchLinks } from "@/lib/lyrics-links";
-import { fetchLyricsFromLetras } from "@/lib/fetch-lyrics";
+import {
+  fetchLyricsFromLetras,
+  fetchLyricsFromCifraClub,
+  fetchLyricsFromVagalume,
+  fetchLyricsFromOVH,
+  fetchLyricsViaGoogle,
+} from "@/lib/fetch-lyrics";
+import { prisma } from "@/lib/prisma";
+import { slugify } from "@/lib/utils";
 
 export async function POST(req: Request) {
   try {
@@ -16,26 +23,118 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1. Fetch YouTube title via oEmbed (no API key needed)
+    // ── 0. Cache do DB ─────────────────────────────────────────────
+    const saved = await prisma.song.findFirst({ where: { youtubeUrl: url } });
+    if (saved?.lyrics) {
+      return NextResponse.json({
+        videoTitle: saved.title,
+        channel: saved.artist,
+        parsedSong: saved.title,
+        parsedArtist: saved.artist,
+        directLyrics: saved.lyrics,
+        lyricsUrl: saved.lyricsUrl,
+        lyricsSource: "saved" as const,
+        fromCache: true,
+        fallbackLinks: { cifraclub: saved.lyricsUrl, letras: saved.lyricsUrl, vagalumeSearch: "" },
+      });
+    }
+
+    // ── 1. Título + artista do YouTube ────────────────────────────
     const videoInfo = await fetchVideoTitle(url);
+    const { song, artist } = await parseArtistAndSong(videoInfo.title, videoInfo.channel);
 
-    // 2. Use AI to extract clean song name + artist
-    const { song, artist } = await parseArtistAndSong(
-      videoInfo.title,
-      videoInfo.channel
-    );
-
-    // 3. Search Vagalume for direct lyrics links
-    const vagalumeResults = await searchVagalume(song, artist);
-
-    // 4. Generate fallback search links for other sites
     const fallbackLinks = generateSearchLinks(song, artist);
 
-    // 5. Actually try to fetch lyrics from letras.mus.br link directly
-    let directLyrics = null;
-    if (fallbackLinks.letras.indexOf("?q=") === -1) {
-       // Only try to fetch if we successfully structured a direct artist/song URL
-       directLyrics = await fetchLyricsFromLetras(fallbackLinks.letras);
+    let directLyrics: string | null = null;
+    let lyricsUrl = "";
+    let lyricsSource: "site" | "none" = "none";
+
+    // Helper para tentar letras.mus.br com vários artistas
+    async function tryLetras(artistName: string, songName: string) {
+      const aSlug = slugify(artistName);
+      const sSlug = slugify(songName);
+      if (!aSlug || !sSlug) return null;
+      const tryUrl = `https://www.letras.mus.br/${aSlug}/${sSlug}/`;
+      const result = await fetchLyricsFromLetras(tryUrl);
+      if (result) lyricsUrl = tryUrl;
+      return result;
+    }
+
+    async function tryCifra(artistName: string, songName: string) {
+      const aSlug = slugify(artistName);
+      const sSlug = slugify(songName);
+      if (!aSlug || !sSlug) return null;
+      const tryUrl = `https://www.cifraclub.com.br/${aSlug}/${sSlug}/`;
+      const result = await fetchLyricsFromCifraClub(tryUrl);
+      if (result) lyricsUrl = tryUrl;
+      return result;
+    }
+
+    // Gera candidatos de artista a partir do título e canal
+    const artistCandidates = buildArtistCandidates(song, artist, videoInfo.title, videoInfo.channel);
+    const songCandidates = buildSongCandidates(song, videoInfo.title);
+
+    // ── 2. letras.mus.br (múltiplas combinações) ──────────────────
+    if (!directLyrics) {
+      for (const a of artistCandidates) {
+        for (const s of songCandidates) {
+          directLyrics = await tryLetras(a, s);
+          if (directLyrics) { lyricsSource = "site"; break; }
+        }
+        if (directLyrics) break;
+      }
+    }
+
+    // ── 3. CifraClub (múltiplas combinações) ─────────────────────
+    if (!directLyrics) {
+      for (const a of artistCandidates) {
+        for (const s of songCandidates) {
+          directLyrics = await tryCifra(a, s);
+          if (directLyrics) { lyricsSource = "site"; break; }
+        }
+        if (directLyrics) break;
+      }
+    }
+
+    // ── 4. Vagalume API ───────────────────────────────────────────
+    if (!directLyrics) {
+      for (const a of artistCandidates) {
+        for (const s of songCandidates) {
+          const vag = await fetchLyricsFromVagalume(s, a);
+          if (vag) {
+            directLyrics = vag.lyrics;
+            lyricsUrl = vag.url;
+            lyricsSource = "site";
+            break;
+          }
+        }
+        if (directLyrics) break;
+      }
+    }
+
+    // ── 5. lyrics.ovh ─────────────────────────────────────────────
+    if (!directLyrics) {
+      for (const a of artistCandidates) {
+        for (const s of songCandidates) {
+          directLyrics = await fetchLyricsFromOVH(s, a);
+          if (directLyrics) {
+            lyricsUrl = `https://api.lyrics.ovh/v1/${encodeURIComponent(a)}/${encodeURIComponent(s)}`;
+            lyricsSource = "site";
+            break;
+          }
+        }
+        if (directLyrics) break;
+      }
+    }
+
+    // ── 6. Google Custom Search ───────────────────────────────────
+    if (!directLyrics) {
+      const gResult = await fetchLyricsViaGoogle(song, artist);
+      if (gResult) {
+        directLyrics = gResult.lyrics;
+        lyricsUrl = gResult.url;
+        lyricsSource = "site";
+      }
     }
 
     return NextResponse.json({
@@ -43,14 +142,86 @@ export async function POST(req: Request) {
       channel: videoInfo.channel,
       parsedSong: song,
       parsedArtist: artist,
-      results: vagalumeResults,
       fallbackLinks,
-      directLyrics, // Included so frontend can render directly
+      directLyrics,
+      lyricsUrl,
+      lyricsSource,
+      fromCache: false,
     });
   } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "Erro ao buscar letra.";
+    const message = err instanceof Error ? err.message : "Erro ao buscar letra.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
+/**
+ * Gera candidatos de nome de artista a partir do nome detectado + título do vídeo + canal
+ */
+function buildArtistCandidates(song: string, artist: string, rawTitle: string, channel: string): string[] {
+  const candidates = new Set<string>();
+
+  // 1. Artista detectado pela IA
+  if (artist) candidates.add(artist);
+
+  // 2. Canal do YouTube
+  if (channel) candidates.add(channel);
+
+  // 3. Extrai palavras-chave do título que parecem ser artistas/ministérios
+  // Ex: "HARPA CRISTÃ Hino 193:A Alma Abatida na voz de Carlos José"
+  const titleLower = rawTitle.toLowerCase();
+
+  // Detecta padrão "ARTISTA - música"
+  const dashParts = rawTitle.split(/\s*[-–]\s*/);
+  if (dashParts.length >= 2) {
+    candidates.add(dashParts[0].trim());
+  }
+
+  // Detecta "harpa crista", "harpa cristã"
+  if (titleLower.includes("harpa")) candidates.add("Harpa Cristã");
+
+  // Detecta "Ministério", "Comunidade", "Igreja"
+  const ministryMatch = rawTitle.match(/(?:Ministério|Comunidade|Igreja|Coral|Grupo)\s+[\w\s]+/i);
+  if (ministryMatch) candidates.add(ministryMatch[0].trim().split(/\s+/).slice(0, 3).join(" "));
+
+  // 4. remove candidatos vazios
+  candidates.delete("");
+  candidates.delete(song); // evita artista = nome da música
+
+  return [...candidates];
+}
+
+/**
+ * Gera candidatos de nome de música a partir do título detectado + título raw do YouTube
+ */
+function buildSongCandidates(song: string, rawTitle: string): string[] {
+  const candidates = new Set<string>();
+
+  // 1. Nome detectado pela IA
+  if (song) candidates.add(song);
+
+  // 2. Remove prefixos comuns do título bruto e usa o que sobra
+  // Ex: "HARPA CRISTÃ Hino 193:A Alma Abatida na voz de Carlos José"
+  const cleaned = rawTitle
+    .replace(/harpa\s*cristã?\s*/gi, "")
+    .replace(/hino\s*\d+\s*[:.]?\s*/gi, "")
+    .replace(/\(.*?\)/g, "")
+    .replace(/na\s+voz\s+de\s+[\w\s]+/gi, "")
+    .replace(/por\s+[\w\s]+/gi, "")
+    .replace(/(?:official\s*)?(?:music\s*)?video/gi, "")
+    .replace(/ao\s+vivo/gi, "")
+    .replace(/\[.*?\]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (cleaned && cleaned !== song) candidates.add(cleaned);
+
+  // 3. Parte após ":" no título (ex: "Hino 193:A Alma Abatida")
+  const colonPart = rawTitle.split(/[:]/)[1];
+  if (colonPart) {
+    const part = colonPart.replace(/na\s+voz\s+de.*/gi, "").trim();
+    if (part) candidates.add(part);
+  }
+
+  candidates.delete("");
+  return [...candidates];
+}

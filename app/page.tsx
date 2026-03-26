@@ -4,42 +4,102 @@ import { useState } from "react";
 import { Reorder } from "framer-motion";
 import AppShell from "@/components/AppShell";
 
+/* ─ Types ─ */
 interface SearchResponse {
   videoTitle: string;
   channel: string;
   parsedSong: string;
   parsedArtist: string;
-  results: { id: string; song: string; artist: string; url: string }[];
+  directLyrics: string | null;
+  lyricsUrl: string;
+  lyricsSource: "site" | "none" | "saved";
+  fromCache?: boolean;
   fallbackLinks: { cifraclub: string; letras: string; vagalumeSearch: string };
-  directLyrics?: string | null;
 }
 
-interface RepertoireItem {
+interface RepertoireEntry {
   song: string;
   artist: string;
   key: string;
   youtubeUrl: string;
   lyricsUrl: string;
+  lyrics: string;
+  lyricsSource: "site" | "drive" | "none";
 }
 
 const KEYS = [
-  "Original", "-1/2 Tom", "+1/2 Tom", "-1 Tom", "+1 Tom",
-  "-1 1/2 Tom", "+1 1/2 Tom", "-2 Tons", "+2 Tons",
+  "Original", "-½ Tom", "+½ Tom", "-1 Tom", "+1 Tom",
+  "-1½ Tom", "+1½ Tom", "-2 Tons", "+2 Tons",
 ];
+
+/* ─ SVG Icons ─ */
+const IconUpload = () => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M8 10V2M5 5l3-3 3 3" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M2 13h12" strokeLinecap="round"/>
+  </svg>
+);
+const IconCheck = () => (
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M3 8l4 4 6-6" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+const IconPlus = () => (
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M8 3v10M3 8h10" strokeLinecap="round"/>
+  </svg>
+);
+const IconWhatsApp = () => (
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+    <path d="M8 1a7 7 0 00-5.9 10.72L1 15l3.38-1.08A7 7 0 108 1zm0 1.4a5.6 5.6 0 11-3.88 9.57l-.22-.22-2 .64.66-1.93-.24-.34A5.6 5.6 0 018 2.4zm-1.6 3a.5.5 0 00-.37.17l-.11.13c-.27.3-.68.77-.68 1.45 0 .72.47 1.42.68 1.7l.02.03c.48.67 1.13 1.28 1.85 1.65.36.19.7.3.98.35.46.08.88 0 1.2-.18.47-.25.75-.67.83-1.1l.03-.22a.25.25 0 00-.15-.26l-1.47-.67a.25.25 0 00-.3.08l-.37.48c-.07.09-.18.1-.27.06-.47-.2-1.08-.71-1.43-1.2a.2.2 0 01.02-.28l.36-.4a.25.25 0 00.04-.29l-.67-1.5a.25.25 0 00-.19-.14z"/>
+  </svg>
+);
+const IconEdit = () => (
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M11 2l3 3-8 8H3v-3L11 2z" strokeLinejoin="round"/>
+  </svg>
+);
+const IconX = () => (
+  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round"/>
+  </svg>
+);
+const IconGrab = () => (
+  <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <circle cx="4" cy="3" r="0.8" fill="currentColor" stroke="none"/>
+    <circle cx="4" cy="6" r="0.8" fill="currentColor" stroke="none"/>
+    <circle cx="4" cy="9" r="0.8" fill="currentColor" stroke="none"/>
+    <circle cx="8" cy="3" r="0.8" fill="currentColor" stroke="none"/>
+    <circle cx="8" cy="6" r="0.8" fill="currentColor" stroke="none"/>
+    <circle cx="8" cy="9" r="0.8" fill="currentColor" stroke="none"/>
+  </svg>
+);
+const IconSaved = () => (
+  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M3 2h8l3 3v9a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z"/>
+    <path d="M6 2v4h5" strokeLinecap="round"/>
+    <path d="M5 10h6M5 13h4" strokeLinecap="round"/>
+  </svg>
+);
 
 export default function Home() {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingMsg, setLoadingMsg] = useState("");
   const [data, setData] = useState<SearchResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [repertoire, setRepertoire] = useState<RepertoireItem[]>([]);
-  const [addingToRepertoire, setAddingToRepertoire] = useState(false);
+  const [repertoire, setRepertoire] = useState<RepertoireEntry[]>([]);
+  const [finishing, setFinishing] = useState(false);
 
-  type ApprovalStatus = "pending" | "approved" | "rejected" | "editing";
-  const [lyricsApproval, setLyricsApproval] = useState<ApprovalStatus>("pending");
+  // Lyrics edit mode
+  type EditState = "idle" | "editing";
+  const [editState, setEditState] = useState<EditState>("idle");
   const [lyricsStanzas, setLyricsStanzas] = useState<{ id: string; text: string }[]>([]);
-  const [finalLyrics, setFinalLyrics] = useState<string | null>(null);
+  const [editedLyrics, setEditedLyrics] = useState<string | null>(null);
   const [activeBlock, setActiveBlock] = useState<string | null>(null);
+
+  // Key selection
+  const [selectedKey, setSelectedKey] = useState("Original");
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -47,11 +107,10 @@ export default function Home() {
     setLoading(true);
     setData(null);
     setError(null);
-    setAddingToRepertoire(false);
-    setLyricsApproval("pending");
-    setFinalLyrics(null);
-    setLyricsStanzas([]);
-    setActiveBlock(null);
+    setEditState("idle");
+    setEditedLyrics(null);
+    setSelectedKey("Original");
+    setLoadingMsg("Buscando música no YouTube…");
 
     try {
       const res = await fetch("/api/search", {
@@ -59,18 +118,21 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: url.trim() }),
       });
+      setLoadingMsg("Procurando a letra…");
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Erro desconhecido.");
+      setLoadingMsg("");
       setData(json);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao buscar.");
     } finally {
       setLoading(false);
+      setLoadingMsg("");
     }
   }
 
-  function handleStartEditing() {
-    const source = data?.directLyrics || "";
+  function startEditing() {
+    const source = editedLyrics ?? data?.directLyrics ?? "";
     const stanzas = source
       .split(/\n\n+/)
       .filter((s) => s.trim())
@@ -78,17 +140,24 @@ export default function Home() {
     setLyricsStanzas(
       stanzas.length > 0
         ? stanzas
-        : [{ id: crypto.randomUUID(), text: "Letra não encontrada... insira o bloco de texto." }]
+        : [{ id: crypto.randomUUID(), text: "Insira o bloco de texto aqui." }]
     );
-    setLyricsApproval("editing");
+    setEditState("editing");
+    setActiveBlock(null);
+  }
+
+  function finishEditing() {
+    const assembled = lyricsStanzas.map((s) => s.text).join("\n\n");
+    setEditedLyrics(assembled);
+    setEditState("idle");
   }
 
   function duplicateStanza(id: string) {
     const index = lyricsStanzas.findIndex((s) => s.id === id);
     if (index === -1) return;
-    const newStanzas = [...lyricsStanzas];
-    newStanzas.splice(index + 1, 0, { id: crypto.randomUUID(), text: lyricsStanzas[index].text });
-    setLyricsStanzas(newStanzas);
+    const copy = [...lyricsStanzas];
+    copy.splice(index + 1, 0, { id: crypto.randomUUID(), text: lyricsStanzas[index].text });
+    setLyricsStanzas(copy);
     setActiveBlock(null);
   }
 
@@ -97,130 +166,97 @@ export default function Home() {
     setActiveBlock(null);
   }
 
-  function finishEditing() {
-    const assembledText = lyricsStanzas.map((s) => s.text).join("\n\n");
-    setFinalLyrics(assembledText);
-    setLyricsApproval("approved");
-    setAddingToRepertoire(true);
-  }
-
-  function handleAddKey(key: string) {
+  function handleAddToRepertoire() {
     if (!data) return;
+    const finalLyrics = editedLyrics ?? data.directLyrics ?? "";
     setRepertoire((prev) => [
       ...prev,
       {
         song: data.parsedSong || data.videoTitle,
         artist: data.parsedArtist || data.channel,
-        key,
+        key: selectedKey,
         youtubeUrl: url,
-        lyricsUrl: data.fallbackLinks.cifraclub || data.fallbackLinks.letras,
+        lyricsUrl: data.lyricsUrl ?? "",
+        lyrics: finalLyrics,
+        lyricsSource: (data.lyricsSource === "site" ? "site" : "none") as "site" | "drive" | "none",
       },
     ]);
+    // Reset para próxima música
     setUrl("");
     setData(null);
-    setAddingToRepertoire(false);
-    setLyricsApproval("pending");
-    setFinalLyrics(null);
-    setLyricsStanzas([]);
-    setActiveBlock(null);
+    setEditState("idle");
+    setEditedLyrics(null);
+    setSelectedKey("Original");
   }
 
-  function handleFinishRepertoire() {
-    let msg = "REPERTÓRIO\n\n";
-    repertoire.forEach((item) => {
-      msg += `[${item.song} - ${item.artist}] (${item.key})\n`;
-      msg += `${item.youtubeUrl}\n`;
-      msg += `${item.lyricsUrl}\n\n`;
-    });
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+  async function handleFinish() {
+    if (repertoire.length === 0) return;
+    setFinishing(true);
+    try {
+      const res = await fetch("/api/repertoire", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entries: repertoire }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Erro ao finalizar.");
+      window.open(json.waUrl, "_blank");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao finalizar.");
+    } finally {
+      setFinishing(false);
+    }
   }
 
-  function removeRepertoireItem(index: number) {
-    setRepertoire((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  function updateRepertoireKey(index: number, newKey: string) {
-    setRepertoire((prev) => {
-      const copy = [...prev];
-      copy[index].key = newKey;
-      return copy;
-    });
-  }
+  const currentLyrics = editedLyrics ?? data?.directLyrics ?? null;
 
   return (
-    <AppShell
-      setlist={repertoire.map((r) => ({ title: r.song, key: r.key }))}
-      onExportWhatsApp={repertoire.length > 0 ? handleFinishRepertoire : undefined}
-    >
-      <div className="max-w-3xl mx-auto space-y-6">
+    <AppShell>
+      <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
 
-        {/* ── Hero Import Card ── */}
+        {/* ── STEP 1: Import input ── */}
         <div
-          className="relative rounded-2xl overflow-hidden p-8"
-          style={{
-            background: "linear-gradient(135deg, #1A1A2E 0%, #2D3A8C 60%, #3D5AF1 100%)",
-            minHeight: "220px",
-          }}
+          className="rounded-xl p-6"
+          style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
         >
-          <div className="relative z-10">
-            <h1 className="text-3xl font-bold text-white leading-tight mb-2">
-              Bring your worship music<br />
-              to the{" "}
-              <span style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", color: "#E07B3A" }}>
-                Sanctuary.
-              </span>
-            </h1>
-            <p className="text-sm mb-6" style={{ color: "rgba(255,255,255,0.7)" }}>
-              Paste a YouTube link to automatically transcribe, transpose, and organize your next setlist.
-            </p>
-
-            {/* Import input */}
-            <form onSubmit={handleSearch}>
-              <div className="flex gap-2">
-                <input
-                  type="url"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  placeholder="https://www.youtube.com/..."
-                  className="flex-1 px-4 py-3 rounded-xl text-sm outline-none"
-                  style={{
-                    background: "rgba(255,255,255,0.12)",
-                    border: "1px solid rgba(255,255,255,0.2)",
-                    color: "#fff",
-                    backdropFilter: "blur(8px)",
-                  }}
-                  required
-                />
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="px-5 py-3 rounded-xl font-semibold text-sm transition-opacity disabled:opacity-60"
-                  style={{ background: "#fff", color: "var(--primary)" }}
-                >
-                  {loading ? "..." : "Import"}
-                </button>
-              </div>
-            </form>
-          </div>
-
-          {/* Decorative circles */}
-          <div
-            className="absolute top-0 right-0 w-48 h-48 rounded-full opacity-10"
-            style={{ background: "white", transform: "translate(30%, -30%)" }}
-          />
-          <div
-            className="absolute bottom-0 right-24 w-32 h-32 rounded-full opacity-10"
-            style={{ background: "white", transform: "translateY(40%)" }}
-          />
+          <h1
+            className="text-lg font-semibold mb-1"
+            style={{ color: "var(--foreground)", letterSpacing: "-0.03em" }}
+          >
+            {repertoire.length === 0 ? "Importar uma música" : "Adicionar outra música"}
+          </h1>
+          <p className="text-xs mb-4" style={{ color: "var(--foreground-muted)" }}>
+            Cole o link do YouTube para buscar a letra automaticamente.
+          </p>
+          <form onSubmit={handleSearch}>
+            <div className="flex gap-2">
+              <input
+                type="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://youtube.com/watch?v=..."
+                className="field-input flex-1"
+                required
+              />
+              <button
+                type="submit"
+                disabled={loading}
+                className="btn-primary shrink-0 gap-1.5"
+              >
+                <IconUpload />
+                {loading ? "Buscando…" : "Buscar"}
+              </button>
+            </div>
+          </form>
         </div>
 
         {/* Error */}
         {error && (
           <div
-            className="px-4 py-3 rounded-xl text-sm"
+            className="px-4 py-3 rounded-lg text-xs"
             style={{
-              background: "rgba(220,38,38,0.08)",
-              border: "1px solid rgba(220,38,38,0.2)",
+              background: "var(--destructive-subtle)",
+              border: "1px solid var(--destructive-border)",
               color: "var(--destructive)",
             }}
           >
@@ -230,144 +266,217 @@ export default function Home() {
 
         {/* Loading skeleton */}
         {loading && (
-          <div className="sanctuary-card p-6 space-y-3 animate-pulse">
-            <div className="h-4 rounded" style={{ background: "var(--border)", width: "60%" }} />
-            <div className="h-3 rounded" style={{ background: "var(--border)", width: "40%" }} />
-            <div className="h-3 rounded" style={{ background: "var(--border)" }} />
-            <div className="h-3 rounded" style={{ background: "var(--border)" }} />
-          </div>
-        )}
-
-        {/* ── Result: song found ── */}
-        {data && lyricsApproval === "pending" && (
-          <div className="sanctuary-card p-6 animate-fade-up">
-            {/* Song info */}
-            <div className="flex items-start gap-4 mb-5">
-              <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center text-2xl shrink-0"
-                style={{ background: "var(--accent)" }}
-              >
-                🎵
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <h2 className="font-bold text-lg leading-tight" style={{ color: "var(--foreground)" }}>
-                      {data.parsedSong || data.videoTitle}
-                    </h2>
-                    <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
-                      {data.parsedArtist || data.channel}
-                    </p>
-                  </div>
-                  {data.directLyrics && (
-                    <span className="badge badge-amber shrink-0">Letra Encontrada</span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Lyrics preview */}
-            {data.directLyrics && (
-              <div
-                className="rounded-xl p-4 mb-5 text-sm leading-relaxed max-h-64 overflow-y-auto"
-                style={{ background: "var(--input)", color: "var(--foreground)", whiteSpace: "pre-wrap" }}
-              >
-                {data.directLyrics}
-              </div>
+          <div
+            className="p-5 rounded-xl space-y-3"
+            style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+          >
+            {loadingMsg && (
+              <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>
+                {loadingMsg}
+              </p>
             )}
-
-            {!data.directLyrics && (
-              <div className="rounded-xl p-4 mb-5 text-sm text-center" style={{ background: "var(--input)", color: "var(--muted-foreground)" }}>
-                Letra não encontrada automaticamente.
-              </div>
-            )}
-
-            {/* Approve / Reject Buttons */}
-            <div className="flex flex-wrap gap-3">
-              <button
-                onClick={() => { setLyricsApproval("approved"); setAddingToRepertoire(true); setFinalLyrics(data.directLyrics ?? ""); }}
-                className="btn-primary flex items-center gap-2"
-              >
-                ✓ Confirmar letra
-              </button>
-              <button
-                onClick={handleStartEditing}
-                className="btn-ghost flex items-center gap-2"
-              >
-                ✏️ Montar letra
-              </button>
-              <button
-                onClick={() => { setData(null); setLyricsApproval("pending"); }}
-                className="btn-ghost flex items-center gap-2"
-                style={{ color: "var(--destructive)", borderColor: "rgba(220,38,38,0.3)" }}
-              >
-                ✕ Rejeitar
-              </button>
+            <div className="animate-pulse space-y-3">
+              <div className="h-3.5 rounded" style={{ background: "var(--surface-3)", width: "55%" }} />
+              <div className="h-2.5 rounded" style={{ background: "var(--surface-3)", width: "35%" }} />
+              <div className="h-2.5 rounded" style={{ background: "var(--surface-3)" }} />
+              <div className="h-2.5 rounded" style={{ background: "var(--surface-3)", width: "70%" }} />
+              <div className="h-2.5 rounded" style={{ background: "var(--surface-3)", width: "50%" }} />
             </div>
           </div>
         )}
 
-        {/* ── Drag & Drop Editor ── */}
-        {lyricsApproval === "editing" && (
-          <div className="sanctuary-card p-6 animate-fade-up">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold" style={{ color: "var(--foreground)" }}>
-                ✏️ Montar Letra
+        {/* ── STEP 2: Letra encontrada ── */}
+        {data && editState === "idle" && (
+          <div
+            className="rounded-xl overflow-hidden animate-fade-up"
+            style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+          >
+            {/* Header */}
+            <div
+              className="px-5 py-4 flex items-start justify-between gap-3"
+              style={{ borderBottom: "1px solid var(--border)" }}
+            >
+              <div>
+                <h2
+                  className="font-semibold text-sm"
+                  style={{ color: "var(--foreground)", letterSpacing: "-0.02em" }}
+                >
+                  {data.parsedSong || data.videoTitle}
+                </h2>
+                <p className="text-xs mt-0.5" style={{ color: "var(--foreground-muted)" }}>
+                  {data.parsedArtist || data.channel}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {data.fromCache && (
+                  <span className="badge gap-1">
+                    <IconSaved /> Salva
+                  </span>
+                )}
+                {currentLyrics ? (
+                  <span className="badge badge-green">Letra encontrada</span>
+                ) : (
+                  <span className="badge badge-red">Sem letra</span>
+                )}
+              </div>
+            </div>
+
+            {/* Letra */}
+            {currentLyrics ? (
+              <div
+                className="px-5 py-4 text-xs leading-relaxed max-h-72 overflow-y-auto"
+                style={{ color: "var(--foreground-muted)", whiteSpace: "pre-wrap" }}
+              >
+                {currentLyrics}
+              </div>
+            ) : (
+              <div
+                className="px-5 py-6 text-center text-xs"
+                style={{ color: "var(--foreground-subtle)" }}
+              >
+                Letra não encontrada automaticamente.<br/>
+                <button
+                  onClick={startEditing}
+                  className="btn-ghost text-xs mt-3 gap-1.5"
+                >
+                  <IconEdit /> Inserir letra manualmente
+                </button>
+              </div>
+            )}
+
+            {/* Ações da letra */}
+            {currentLyrics && (
+              <div
+                className="px-5 py-3"
+                style={{ borderTop: "1px solid var(--border)" }}
+              >
+                <button
+                  onClick={startEditing}
+                  className="btn-ghost text-xs gap-1.5"
+                >
+                  <IconEdit /> Editar letra
+                </button>
+              </div>
+            )}
+
+            {/* Tom */}
+            <div
+              className="px-5 py-4"
+              style={{ borderTop: "1px solid var(--border)" }}
+            >
+              <p className="section-label mb-2">Escolha o tom</p>
+              <div className="flex flex-wrap gap-1.5">
+                {KEYS.map((key) => (
+                  <button
+                    key={key}
+                    onClick={() => setSelectedKey(key)}
+                    className={selectedKey === key ? "btn-primary text-xs py-1.5 px-3" : "btn-ghost text-xs py-1.5 px-3"}
+                  >
+                    {key}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Botão adicionar */}
+            <div
+              className="px-5 py-4 flex"
+              style={{ borderTop: "1px solid var(--border)" }}
+            >
+              <button
+                onClick={handleAddToRepertoire}
+                className="btn-primary gap-2"
+              >
+                <IconPlus />
+                {repertoire.length === 0 ? "Adicionar letra no repertório" : "Adicionar outra música"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── STEP 2b: Editor drag & drop ── */}
+        {data && editState === "editing" && (
+          <div
+            className="rounded-xl animate-fade-up overflow-hidden"
+            style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+          >
+            <div
+              className="px-5 py-4 flex items-center justify-between"
+              style={{ borderBottom: "1px solid var(--border)" }}
+            >
+              <h3
+                className="text-sm font-semibold"
+                style={{ color: "var(--foreground)", letterSpacing: "-0.02em" }}
+              >
+                Montar Letra
               </h3>
-              <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-                Arraste para reordenar os blocos
+              <span className="text-xs" style={{ color: "var(--foreground-subtle)" }}>
+                Clique para selecionar · Arraste para reordenar
               </span>
             </div>
-            <Reorder.Group
-              axis="y"
-              values={lyricsStanzas}
-              onReorder={setLyricsStanzas}
-              className="space-y-3"
-            >
-              {lyricsStanzas.map((stanza) => (
-                <Reorder.Item
-                  key={stanza.id}
-                  value={stanza}
-                  className="rounded-xl cursor-grab active:cursor-grabbing"
-                  style={{
-                    background: activeBlock === stanza.id ? "var(--accent)" : "var(--input)",
-                    border: `1px solid ${activeBlock === stanza.id ? "var(--primary)" : "var(--border)"}`,
-                    padding: "0.875rem 1rem",
-                    transition: "border-color 0.15s, background 0.15s",
-                  }}
-                  onClick={() => setActiveBlock(activeBlock === stanza.id ? null : stanza.id)}
-                >
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: "var(--foreground)" }}>
-                    {stanza.text}
-                  </p>
-                  {activeBlock === stanza.id && (
-                    <div className="flex gap-2 mt-3">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); duplicateStanza(stanza.id); }}
-                        className="text-xs px-3 py-1 rounded-lg font-medium"
-                        style={{ background: "var(--primary)", color: "#fff" }}
+
+            <div className="p-4">
+              <Reorder.Group
+                axis="y"
+                values={lyricsStanzas}
+                onReorder={setLyricsStanzas}
+                className="space-y-2"
+              >
+                {lyricsStanzas.map((stanza) => (
+                  <Reorder.Item
+                    key={stanza.id}
+                    value={stanza}
+                    className="rounded-lg cursor-grab active:cursor-grabbing"
+                    style={{
+                      background: activeBlock === stanza.id ? "var(--surface-3)" : "var(--surface-2)",
+                      border: `1px solid ${activeBlock === stanza.id ? "var(--border-hover)" : "var(--border)"}`,
+                      padding: "0.75rem",
+                    }}
+                    onClick={() => setActiveBlock(activeBlock === stanza.id ? null : stanza.id)}
+                  >
+                    <div className="flex items-start gap-2">
+                      <span style={{ color: "var(--foreground-subtle)", marginTop: "2px", flexShrink: 0 }}>
+                        <IconGrab />
+                      </span>
+                      <p
+                        className="text-xs leading-relaxed whitespace-pre-wrap flex-1"
+                        style={{ color: "var(--foreground-muted)" }}
                       >
-                        Duplicar
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); deleteStanza(stanza.id); }}
-                        className="text-xs px-3 py-1 rounded-lg font-medium"
-                        style={{ background: "rgba(220,38,38,0.1)", color: "var(--destructive)" }}
-                      >
-                        Excluir
-                      </button>
+                        {stanza.text}
+                      </p>
                     </div>
-                  )}
-                </Reorder.Item>
-              ))}
-            </Reorder.Group>
-            <div className="flex gap-3 mt-5">
-              <button onClick={finishEditing} className="btn-primary">
-                ✓ Finalizar
+                    {activeBlock === stanza.id && (
+                      <div className="flex gap-2 mt-3 ml-5">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); duplicateStanza(stanza.id); }}
+                          className="btn-ghost text-xs py-1 px-2.5"
+                        >
+                          Duplicar
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); deleteStanza(stanza.id); }}
+                          className="btn-ghost text-xs py-1 px-2.5"
+                          style={{ color: "var(--destructive)", borderColor: "var(--destructive-border)" }}
+                        >
+                          Excluir
+                        </button>
+                      </div>
+                    )}
+                  </Reorder.Item>
+                ))}
+              </Reorder.Group>
+            </div>
+
+            <div
+              className="px-5 py-3 flex gap-2"
+              style={{ borderTop: "1px solid var(--border)" }}
+            >
+              <button onClick={finishEditing} className="btn-primary text-xs gap-2">
+                <IconCheck /> Confirmar
               </button>
               <button
-                onClick={() => setLyricsApproval("pending")}
-                className="btn-ghost"
+                onClick={() => setEditState("idle")}
+                className="btn-ghost text-xs"
               >
                 Cancelar
               </button>
@@ -375,114 +484,118 @@ export default function Home() {
           </div>
         )}
 
-        {/* ── Key Selection ── */}
-        {lyricsApproval === "approved" && addingToRepertoire && (
-          <div className="sanctuary-card p-6 animate-fade-up">
-            <h3 className="font-semibold mb-1" style={{ color: "var(--foreground)" }}>
-              🎵 Adicionar ao Setlist
-            </h3>
-            <p className="text-sm mb-5" style={{ color: "var(--muted-foreground)" }}>
-              {data?.parsedSong || data?.videoTitle} — escolha o tom:
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {KEYS.map((key) => (
-                <button
-                  key={key}
-                  onClick={() => handleAddKey(key)}
-                  className="px-4 py-2 rounded-xl text-sm font-semibold transition-all"
-                  style={{
-                    background: key === "Original" ? "var(--primary)" : "var(--input)",
-                    color: key === "Original" ? "#fff" : "var(--foreground)",
-                    border: "1px solid var(--border)",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (key !== "Original") {
-                      (e.target as HTMLElement).style.background = "var(--accent)";
-                      (e.target as HTMLElement).style.borderColor = "var(--primary)";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (key !== "Original") {
-                      (e.target as HTMLElement).style.background = "var(--input)";
-                      (e.target as HTMLElement).style.borderColor = "var(--border)";
-                    }
-                  }}
-                >
-                  {key}
-                </button>
-              ))}
-            </div>
+        {/* ── STEP 3: Botão finalizar ── */}
+        {repertoire.length > 0 && !data && (
+          <div
+            className="rounded-xl p-5 animate-fade-up"
+            style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+          >
+            <button
+              onClick={handleFinish}
+              disabled={finishing}
+              className="btn-primary w-full justify-center gap-2"
+              style={{ padding: "0.75rem 1rem", fontSize: "0.875rem" }}
+            >
+              <IconWhatsApp />
+              {finishing ? "Preparando…" : "Finalizar e mandar no WhatsApp"}
+            </button>
           </div>
         )}
 
-        {/* ── Quick actions ── */}
-        {!data && !loading && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {[
-              { icon: "📄", label: "Upload Chord Sheet", sub: "PDF or Text files supported" },
-              {
-                icon: "🔀", label: "Smart Transpose",
-                sub: "Instantly shift any song to match your lead vocalist's range.",
-              },
-              { icon: "📊", label: "Library Health", sub: "Track your most-used songs and keys." },
-            ].map((card) => (
-              <div key={card.label} className="sanctuary-card p-5 cursor-pointer hover:shadow-md transition-shadow">
-                <div className="text-2xl mb-2">{card.icon}</div>
-                <h3 className="font-semibold text-sm mb-1" style={{ color: "var(--foreground)" }}>
-                  {card.label}
-                </h3>
-                <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-                  {card.sub}
-                </p>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* ── Current setlist (mobile) ── */}
+        {/* ── Resumo do repertório ── */}
         {repertoire.length > 0 && (
-          <div className="sanctuary-card p-5 lg:hidden animate-fade-up">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold" style={{ color: "var(--foreground)" }}>
-                Current Setlist
-              </h3>
-              <button
-                onClick={handleFinishRepertoire}
-                className="btn-primary text-xs py-1.5 px-3"
+          <div
+            className="rounded-xl overflow-hidden animate-fade-up"
+            style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+          >
+            <div
+              className="px-5 py-3 flex items-center justify-between"
+              style={{ borderBottom: "1px solid var(--border)" }}
+            >
+              <h3
+                className="text-sm font-semibold"
+                style={{ color: "var(--foreground)", letterSpacing: "-0.02em" }}
               >
-                WhatsApp
-              </button>
+                Repertório
+              </h3>
+              <span className="section-label">{repertoire.length} música{repertoire.length !== 1 ? "s" : ""}</span>
             </div>
-            <div className="space-y-2">
+            <div className="p-3 space-y-1.5">
               {repertoire.map((item, i) => (
                 <div
                   key={i}
-                  className="flex items-center gap-2 rounded-lg px-3 py-2"
-                  style={{ background: "var(--input)" }}
+                  className="flex items-center gap-2 rounded-lg px-3 py-2.5"
+                  style={{ background: "var(--surface-2)" }}
                 >
-                  <span className="text-xs w-5 shrink-0" style={{ color: "var(--muted-foreground)" }}>
+                  <span
+                    className="text-xs w-5 shrink-0 tabular-nums"
+                    style={{ color: "var(--foreground-subtle)" }}
+                  >
                     {i + 1}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{item.song}</p>
+                    <p
+                      className="text-xs font-medium truncate"
+                      style={{ color: "var(--foreground)" }}
+                    >
+                      {item.song}
+                    </p>
+                    <p
+                      className="text-xs truncate"
+                      style={{ color: "var(--foreground-subtle)" }}
+                    >
+                      {item.artist}
+                    </p>
                   </div>
                   <select
                     value={item.key}
-                    onChange={(e) => updateRepertoireKey(i, e.target.value)}
-                    className="text-[10px] font-semibold rounded px-1 py-0.5 outline-none cursor-pointer"
-                    style={{ background: "var(--accent)", color: "var(--primary)", border: "none" }}
+                    onChange={(e) => {
+                      const copy = [...repertoire];
+                      copy[i] = { ...copy[i], key: e.target.value };
+                      setRepertoire(copy);
+                    }}
+                    className="text-xs rounded px-1.5 py-0.5 outline-none cursor-pointer shrink-0"
+                    style={{
+                      background: "var(--surface-3)",
+                      color: "var(--foreground-muted)",
+                      border: "1px solid var(--border)",
+                    }}
                   >
                     {KEYS.map((k) => <option key={k} value={k}>{k}</option>)}
                   </select>
                   <button
-                    onClick={() => removeRepertoireItem(i)}
-                    className="text-xs shrink-0"
-                    style={{ color: "var(--muted-foreground)" }}
+                    onClick={() => setRepertoire((prev) => prev.filter((_, idx) => idx !== i))}
+                    className="btn-icon shrink-0"
+                    style={{ width: "24px", height: "24px", border: "none" }}
+                    aria-label="Remover"
                   >
-                    ✕
+                    <IconX />
                   </button>
                 </div>
               ))}
+            </div>
+
+            {/* Botão finalizar dentro do resumo também */}
+            <div
+              className="px-4 pb-4 pt-2 flex gap-2"
+            >
+              <button
+                onClick={handleFinish}
+                disabled={finishing}
+                className="btn-primary flex-1 justify-center gap-2 text-xs"
+                style={{ padding: "0.625rem 1rem" }}
+              >
+                <IconWhatsApp />
+                {finishing ? "Preparando…" : "Finalizar e mandar no WhatsApp"}
+              </button>
+              {data === null && (
+                <button
+                  onClick={() => setUrl("")}
+                  className="btn-ghost text-xs gap-1.5"
+                >
+                  <IconPlus /> Nova música
+                </button>
+              )}
             </div>
           </div>
         )}

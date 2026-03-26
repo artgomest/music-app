@@ -10,13 +10,10 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.48",
-    "@prisma/adapter-better-sqlite3": "^7.5.0",
     "@prisma/client": "^7.5.0",
     "@radix-ui/react-slot": "^1.2.4",
-    "@types/better-sqlite3": "^7.6.13",
     "ai": "^6.0.137",
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^12.8.0",
     "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

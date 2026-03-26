@@ -5,6 +5,13 @@ import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
+const IconLogo = () => (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+    <rect x="1" y="1" width="18" height="18" rx="5" stroke="currentColor" strokeWidth="1.5"/>
+    <path d="M6 14V7l4 3 4-3v7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -30,107 +37,133 @@ export default function LoginPage() {
       className="min-h-screen flex flex-col items-center justify-center px-4"
       style={{ background: "var(--background)" }}
     >
-      {/* Logo */}
-      <div className="text-center mb-8 animate-fade-up">
-        <div className="sanctuary-logo text-3xl mb-1">
-          The <span>Sanctuary</span>
+      {/* Logo mark */}
+      <div className="flex flex-col items-center gap-3 mb-10 animate-fade-up">
+        <div style={{ color: "var(--foreground-muted)" }}>
+          <IconLogo />
         </div>
-        <p className="section-label tracking-widest">IBF MUSIC HUB</p>
+        <div>
+          <div className="app-logo text-center">
+            The <em>Sanctuary</em>
+          </div>
+          <p
+            className="section-label text-center mt-1"
+            style={{ letterSpacing: "0.12em" }}
+          >
+            IBF Music Hub
+          </p>
+        </div>
       </div>
 
-      {/* Card */}
+      {/* Form card */}
       <div
-        className="w-full max-w-sm animate-fade-up"
-        style={{
-          background: "var(--card)",
-          borderRadius: "1rem",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.08)",
-          padding: "2rem",
-          animationDelay: "0.05s",
-        }}
+        className="w-full max-w-xs animate-fade-up"
+        style={{ animationDelay: "0.05s" }}
       >
-        <h1 className="text-2xl font-bold mb-1" style={{ color: "var(--foreground)", fontFamily: "var(--font-sans)" }}>
-          Welcome back
-        </h1>
-        <p className="text-sm mb-6" style={{ color: "var(--muted-foreground)" }}>
-          Please enter your details to find your peace.
-        </p>
-
-        {error && (
-          <div
-            className="mb-4 px-4 py-3 text-sm rounded-lg"
-            style={{
-              background: "rgba(220,38,38,0.08)",
-              border: "1px solid rgba(220,38,38,0.2)",
-              color: "var(--destructive)",
-            }}
+        <div className="card" style={{ padding: "1.5rem" }}>
+          <h1
+            className="text-base font-semibold mb-1"
+            style={{ color: "var(--foreground)", letterSpacing: "-0.02em" }}
           >
-            {error}
-          </div>
-        )}
+            Entrar
+          </h1>
+          <p className="text-xs mb-5" style={{ color: "var(--foreground-muted)" }}>
+            Digite suas credenciais para continuar.
+          </p>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="section-label block mb-1.5">Email Address</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="name@domain.com"
-              className="field-input"
-              required
-            />
-          </div>
-          <div>
-            <label className="section-label block mb-1.5">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••••"
-              className="field-input"
-              required
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="btn-primary w-full justify-center mt-2 py-3"
-          >
-            {loading ? "Signing in..." : "Sign In"}
-          </button>
-        </form>
+          {error && (
+            <div
+              className="mb-4 px-3 py-2.5 rounded text-xs"
+              style={{
+                background: "var(--destructive-subtle)",
+                border: "1px solid var(--destructive-border)",
+                color: "var(--destructive)",
+              }}
+            >
+              {error}
+            </div>
+          )}
 
-        <p className="text-center text-sm mt-6" style={{ color: "var(--muted-foreground)" }}>
-          New here?{" "}
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <div>
+              <label
+                className="section-label block mb-1.5"
+                htmlFor="email"
+              >
+                E-mail
+              </label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@domain.com"
+                className="field-input"
+                required
+              />
+            </div>
+            <div>
+              <label
+                className="section-label block mb-1.5"
+                htmlFor="password"
+              >
+                Senha
+              </label>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="field-input"
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="btn-primary w-full justify-center mt-1"
+              style={{ padding: "0.625rem 1rem" }}
+            >
+              {loading ? (
+                <span style={{ opacity: 0.7 }}>Entrando…</span>
+              ) : (
+                "Continuar"
+              )}
+            </button>
+          </form>
+        </div>
+
+        <p
+          className="text-center text-xs mt-4"
+          style={{ color: "var(--foreground-subtle)" }}
+        >
+          Não tem uma conta?{" "}
           <Link
             href="/register"
-            className="font-semibold hover:underline"
-            style={{ color: "var(--primary)" }}
+            className="font-medium hover:underline"
+            style={{ color: "var(--foreground-muted)" }}
           >
-            Create an account
+            Criar conta
           </Link>
         </p>
       </div>
 
       {/* Footer */}
       <div
-        className="flex gap-4 mt-8 text-xs"
-        style={{ color: "var(--muted-foreground)" }}
+        className="flex gap-5 mt-12 animate-fade-up"
+        style={{ animationDelay: "0.1s" }}
       >
-        {["Privacy", "Terms", "Support"].map((l) => (
+        {["Privacidade", "Termos", "Suporte"].map((l) => (
           <span
             key={l}
-            className="cursor-pointer hover:underline uppercase tracking-widest"
-            style={{ fontSize: "0.6rem" }}
+            className="cursor-pointer hover:underline section-label"
+            style={{ letterSpacing: "0.06em" }}
           >
             {l}
           </span>
         ))}
       </div>
-      <p className="mt-2 text-xs" style={{ color: "var(--muted-foreground)", fontSize: "0.6rem" }}>
-        © 2024 THE SANCTUARY. ALL RIGHTS RESERVED.
-      </p>
     </main>
   );
 }
