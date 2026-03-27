@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Reorder } from "framer-motion";
 import AppShell from "@/components/AppShell";
 
@@ -82,7 +82,23 @@ const IconSaved = () => (
   </svg>
 );
 
+// ── Helpers de persistência ──────────────────────────────────────────────
+function loadLS<T>(key: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+function saveLS<T>(key: string, value: T) {
+  if (typeof window === "undefined") return;
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+}
+
 export default function Home() {
+  // ── State (restaurado do localStorage na primeira renderização) ──
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState("");
@@ -100,6 +116,28 @@ export default function Home() {
 
   // Key selection
   const [selectedKey, setSelectedKey] = useState("Original");
+
+  // ── Hidratação única do localStorage ───────────────────────────────────
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    setRepertoire(loadLS<RepertoireEntry[]>("ibf_repertoire", []));
+    const savedData = loadLS<SearchResponse | null>("ibf_current_data", null);
+    const savedUrl  = loadLS<string>("ibf_current_url", "");
+    const savedKey  = loadLS<string>("ibf_current_key", "Original");
+    const savedEdited = loadLS<string | null>("ibf_edited_lyrics", null);
+    setData(savedData);
+    setUrl(savedUrl);
+    setSelectedKey(savedKey);
+    setEditedLyrics(savedEdited);
+    setHydrated(true);
+  }, []);
+
+  // ── Persistência automática sempre que o estado mudar ──────────────────
+  useEffect(() => { if (hydrated) saveLS("ibf_repertoire", repertoire); }, [repertoire, hydrated]);
+  useEffect(() => { if (hydrated) saveLS("ibf_current_data", data); }, [data, hydrated]);
+  useEffect(() => { if (hydrated) saveLS("ibf_current_url", url); }, [url, hydrated]);
+  useEffect(() => { if (hydrated) saveLS("ibf_current_key", selectedKey); }, [selectedKey, hydrated]);
+  useEffect(() => { if (hydrated) saveLS("ibf_edited_lyrics", editedLyrics); }, [editedLyrics, hydrated]);
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -200,7 +238,16 @@ export default function Home() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Erro ao finalizar.");
+      // Limpa o repertório salvo após compartilhar
+      ["ibf_repertoire","ibf_current_data","ibf_current_url","ibf_current_key","ibf_edited_lyrics"]
+        .forEach(k => localStorage.removeItem(k));
+      setRepertoire([]);
+      setData(null);
+      setUrl("");
+      setSelectedKey("Original");
+      setEditedLyrics(null);
       window.open(json.waUrl, "_blank");
+
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao finalizar.");
     } finally {
