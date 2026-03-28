@@ -165,6 +165,11 @@ function buildArtistCandidates(song: string, artist: string, rawTitle: string, c
 
   // 2. Canal do YouTube
   if (channel) candidates.add(channel);
+  if (channel) {
+    for (const normalized of normalizeArtistCandidate(channel)) {
+      candidates.add(normalized);
+    }
+  }
 
   // 3. Extrai palavras-chave do título que parecem ser artistas/ministérios
   // Ex: "HARPA CRISTÃ Hino 193:A Alma Abatida na voz de Carlos José"
@@ -205,6 +210,7 @@ function buildSongCandidates(song: string, rawTitle: string): string[] {
     .replace(/harpa\s*cristã?\s*/gi, "")
     .replace(/hino\s*\d+\s*[:.]?\s*/gi, "")
     .replace(/\(.*?\)/g, "")
+    .replace(/\|.*$/g, "")
     .replace(/na\s+voz\s+de\s+[\w\s]+/gi, "")
     .replace(/por\s+[\w\s]+/gi, "")
     .replace(/(?:official\s*)?(?:music\s*)?video/gi, "")
@@ -224,4 +230,33 @@ function buildSongCandidates(song: string, rawTitle: string): string[] {
 
   candidates.delete("");
   return [...candidates];
+}
+
+/**
+ * Normaliza variações comuns de nomes de canal/artista.
+ * Ex: "Fhop Music" => ["Fhop", "Fhop Music"]
+ */
+function normalizeArtistCandidate(value: string): string[] {
+  const normalized = new Set<string>();
+  const base = value
+    .replace(/\|.*$/g, "")
+    .replace(/\(.*?\)/g, "")
+    .replace(/\[.*?\]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!base) return [];
+  normalized.add(base);
+
+  const withoutSuffix = base
+    .replace(/\b(official|oficial|music|música|channel|canal|tv|vevo)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (withoutSuffix) normalized.add(withoutSuffix);
+
+  const beforePipe = value.split("|")[0]?.trim();
+  if (beforePipe) normalized.add(beforePipe);
+
+  return [...normalized];
 }
