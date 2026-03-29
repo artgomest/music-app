@@ -160,6 +160,71 @@ export async function fetchLyricsViaGoogle(
   }
 }
 
+/**
+ * 6. Google HTML Search fallback (sem API key/CSE)
+ * Faz scraping de resultados públicos e tenta extrair a letra dos domínios suportados.
+ */
+export async function fetchLyricsViaGoogleHtml(
+  song: string,
+  artist: string
+): Promise<{ lyrics: string; url: string; source: string } | null> {
+  try {
+    const query = `letra ${song} ${artist} site:letras.mus.br OR site:cifraclub.com.br OR site:vagalume.com.br OR site:genius.com`;
+    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&hl=pt-BR&num=10`;
+
+    const res = await fetch(searchUrl, {
+      headers: {
+        "User-Agent": UA,
+        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+      },
+      signal: AbortSignal.timeout(9000),
+    });
+    if (!res.ok) return null;
+
+    const html = await res.text();
+    const $ = cheerio.load(html);
+
+    const candidates = new Set<string>();
+
+    $("a[href^='/url?q=']").each((_, el) => {
+      const href = $(el).attr("href") ?? "";
+      const match = href.match(/\/url\?q=([^&]+)/);
+      if (!match) return;
+      const link = decodeURIComponent(match[1]);
+      if (
+        link.includes("letras.mus.br") ||
+        link.includes("cifraclub.com.br") ||
+        link.includes("vagalume.com.br") ||
+        link.includes("genius.com")
+      ) {
+        candidates.add(link);
+      }
+    });
+
+    for (const link of candidates) {
+      let lyrics: string | null = null;
+
+      if (link.includes("letras.mus.br")) {
+        lyrics = await fetchLyricsFromLetras(link);
+      } else if (link.includes("cifraclub.com.br")) {
+        lyrics = await fetchLyricsFromCifraClub(link);
+      } else if (link.includes("vagalume.com.br")) {
+        lyrics = await scrapeVagalumePage(link);
+      } else if (link.includes("genius.com")) {
+        lyrics = await scrapeGeniusPage(link);
+      }
+
+      if (lyrics) {
+        return { lyrics, url: link, source: "google-html" };
+      }
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 async function scrapeVagalumePage(url: string): Promise<string | null> {
   try {
     const res = await fetch(url, { headers: { "User-Agent": UA } });

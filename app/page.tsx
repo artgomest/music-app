@@ -27,6 +27,16 @@ interface RepertoireEntry {
   lyricsSource: "site" | "drive" | "none";
 }
 
+interface MedleyLinkItem {
+  id: string;
+  url: string;
+}
+
+interface MedleyStanza {
+  id: string;
+  text: string;
+}
+
 const KEYS = [
   "Original", "-½ Tom", "+½ Tom", "-1 Tom", "+1 Tom",
   "-1½ Tom", "+1½ Tom", "-2 Tons", "+2 Tons",
@@ -117,6 +127,22 @@ export default function Home() {
   // Key selection
   const [selectedKey, setSelectedKey] = useState("Original");
 
+  // Medley builder
+  type MedleyStep = "links" | "stanzas";
+  const [medleyOpen, setMedleyOpen] = useState(false);
+  const [medleyStep, setMedleyStep] = useState<MedleyStep>("links");
+  const [medleyLoading, setMedleyLoading] = useState(false);
+  const [medleyLinks, setMedleyLinks] = useState<MedleyLinkItem[]>([
+    { id: crypto.randomUUID(), url: "" },
+    { id: crypto.randomUUID(), url: "" },
+  ]);
+  const [medleyStanzas, setMedleyStanzas] = useState<MedleyStanza[]>([]);
+  const [activeMedleyStanza, setActiveMedleyStanza] = useState<string | null>(null);
+  const [medleyTitle, setMedleyTitle] = useState("Medley");
+  const [retryModalOpen, setRetryModalOpen] = useState(false);
+  const [manualSongName, setManualSongName] = useState("");
+  const [retryingSearch, setRetryingSearch] = useState(false);
+
   // ── Hidratação única do localStorage ───────────────────────────────────
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
@@ -204,6 +230,179 @@ export default function Home() {
     setActiveBlock(null);
   }
 
+  function openMedleyBuilder() {
+    setMedleyOpen(true);
+    setMedleyStep("links");
+    setMedleyLoading(false);
+    setMedleyStanzas([]);
+    setActiveMedleyStanza(null);
+  }
+
+  function closeMedleyBuilder() {
+    setMedleyOpen(false);
+    setMedleyStep("links");
+    setMedleyLoading(false);
+    setMedleyStanzas([]);
+    setActiveMedleyStanza(null);
+  }
+
+  function addMedleyLink() {
+    setMedleyLinks((prev) => [...prev, { id: crypto.randomUUID(), url: "" }]);
+  }
+
+  function removeMedleyLink(id: string) {
+    setMedleyLinks((prev) => prev.filter((item) => item.id !== id));
+  }
+
+  function duplicateMedleyStanza(id: string) {
+    const index = medleyStanzas.findIndex((s) => s.id === id);
+    if (index === -1) return;
+    const copy = [...medleyStanzas];
+    copy.splice(index + 1, 0, { id: crypto.randomUUID(), text: medleyStanzas[index].text });
+    setMedleyStanzas(copy);
+    setActiveMedleyStanza(null);
+  }
+
+  function deleteMedleyStanza(id: string) {
+    setMedleyStanzas((prev) => prev.filter((s) => s.id !== id));
+    setActiveMedleyStanza(null);
+  }
+
+  function editMedleyStanza(id: string) {
+    const stanza = medleyStanzas.find((s) => s.id === id);
+    if (!stanza) return;
+    const edited = window.prompt("Edite a estrofe:", stanza.text);
+    if (edited === null) return;
+    setMedleyStanzas((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, text: edited.trim() || s.text } : s))
+    );
+    setActiveMedleyStanza(null);
+  }
+
+  function mergeMedleyWithNext(id: string) {
+    const index = medleyStanzas.findIndex((s) => s.id === id);
+    if (index < 0 || index >= medleyStanzas.length - 1) return;
+    const copy = [...medleyStanzas];
+    const current = copy[index];
+    const next = copy[index + 1];
+    copy[index] = { ...current, text: `${current.text}\n\n${next.text}` };
+    copy.splice(index + 1, 1);
+    setMedleyStanzas(copy);
+    setActiveMedleyStanza(null);
+  }
+
+  async function handleMedleyNextStep() {
+    const urls = medleyLinks.map((l) => l.url.trim()).filter(Boolean);
+    if (urls.length < 2) {
+      setError("Adicione pelo menos 2 links para criar o medley.");
+      return;
+    }
+
+    setError(null);
+    setMedleyLoading(true);
+
+    try {
+      const responses = await Promise.all(
+        urls.map(async (link) => {
+          const res = await fetch("/api/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: link }),
+          });
+          const json = await res.json();
+          if (!res.ok) throw new Error(json.error ?? "Erro ao buscar músicas do medley.");
+          return { link, data: json as SearchResponse };
+        })
+      );
+
+      const allStanzas: MedleyStanza[] = [];
+      responses.forEach(({ data }, idx) => {
+        const title = data.parsedSong || data.videoTitle || `Música ${idx + 1}`;
+        const artist = data.parsedArtist || data.channel || "Artista";
+        const blocks = (data.directLyrics ?? "")
+          .split(/\n\n+/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+
+        if (blocks.length === 0) {
+          allStanzas.push({
+            id: crypto.randomUUID(),
+            text: `[${title} — ${artist}]\n(sem letra automática, edite este bloco)`,
+          });
+          return;
+        }
+
+        blocks.forEach((block, blockIdx) => {
+          allStanzas.push({
+            id: crypto.randomUUID(),
+            text: blockIdx === 0 ? `[${title} — ${artist}]\n${block}` : block,
+          });
+        });
+      });
+
+      setMedleyTitle(`Medley: ${responses.map((r) => r.data.parsedSong || r.data.videoTitle).slice(0, 3).join(" / ")}`);
+      setMedleyStanzas(allStanzas.length ? allStanzas : [{ id: crypto.randomUUID(), text: "Insira as estrofes do medley aqui." }]);
+      setMedleyStep("stanzas");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao montar medley.");
+    } finally {
+      setMedleyLoading(false);
+    }
+  }
+
+  function handleAddMedleyToRepertoire() {
+    if (medleyStanzas.length === 0) return;
+    const links = medleyLinks.map((l) => l.url.trim()).filter(Boolean);
+    const medleyLyrics = medleyStanzas.map((s) => s.text).join("\n\n");
+
+    setRepertoire((prev) => [
+      ...prev,
+      {
+        song: medleyTitle,
+        artist: "Medley",
+        key: "Original",
+        youtubeUrl: links[0] || `https://youtube.com/watch?v=medley-${Date.now()}`,
+        lyricsUrl: "",
+        lyrics: medleyLyrics,
+        lyricsSource: "none",
+      },
+    ]);
+
+    closeMedleyBuilder();
+    setMedleyLinks([
+      { id: crypto.randomUUID(), url: "" },
+      { id: crypto.randomUUID(), url: "" },
+    ]);
+  }
+
+  async function handleManualRetrySearch(e: React.FormEvent) {
+    e.preventDefault();
+    if (!manualSongName.trim() || !url.trim()) return;
+
+    setRetryingSearch(true);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: url.trim(),
+          manualSongName: manualSongName.trim(),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Erro ao tentar nova busca.");
+      setData(json);
+      setRetryModalOpen(false);
+      setManualSongName("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao buscar novamente.");
+    } finally {
+      setRetryingSearch(false);
+    }
+  }
+
   function handleAddToRepertoire() {
     if (!data) return;
     const finalLyrics = editedLyrics ?? data.directLyrics ?? "";
@@ -266,12 +465,17 @@ export default function Home() {
           className="rounded-xl p-6"
           style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
         >
-          <h1
-            className="text-lg font-semibold mb-1"
-            style={{ color: "var(--foreground)", letterSpacing: "-0.03em" }}
-          >
-            {repertoire.length === 0 ? "Importar uma música" : "Adicionar outra música"}
-          </h1>
+          <div className="flex items-center justify-between gap-3 mb-1">
+            <h1
+              className="text-lg font-semibold"
+              style={{ color: "var(--foreground)", letterSpacing: "-0.03em" }}
+            >
+              {repertoire.length === 0 ? "Importar uma música" : "Adicionar outra música"}
+            </h1>
+            <button onClick={openMedleyBuilder} className="btn-ghost text-xs gap-1.5">
+              <IconPlus /> Criar Medley
+            </button>
+          </div>
           <p className="text-xs mb-4" style={{ color: "var(--foreground-muted)" }}>
             Cole o link do YouTube para buscar a letra automaticamente.
           </p>
@@ -382,12 +586,20 @@ export default function Home() {
                 style={{ color: "var(--foreground-subtle)" }}
               >
                 Letra não encontrada automaticamente.<br/>
-                <button
-                  onClick={startEditing}
-                  className="btn-ghost text-xs mt-3 gap-1.5"
-                >
-                  <IconEdit /> Inserir letra manualmente
-                </button>
+                <div className="flex items-center justify-center gap-2 mt-3">
+                  <button
+                    onClick={() => setRetryModalOpen(true)}
+                    className="btn-ghost text-xs gap-1.5"
+                  >
+                    <IconUpload /> Tentar com nome da música
+                  </button>
+                  <button
+                    onClick={startEditing}
+                    className="btn-ghost text-xs gap-1.5"
+                  >
+                    <IconEdit /> Inserir letra manualmente
+                  </button>
+                </div>
               </div>
             )}
 
@@ -647,6 +859,234 @@ export default function Home() {
           </div>
         )}
       </div>
+
+      {/* ── Modal: Criar Medley ── */}
+      {medleyOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.65)" }}
+        >
+          <div
+            className="w-full max-w-3xl rounded-xl overflow-hidden"
+            style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+          >
+            <div
+              className="px-5 py-4 flex items-center justify-between"
+              style={{ borderBottom: "1px solid var(--border)" }}
+            >
+              <h3 className="text-sm font-semibold" style={{ color: "var(--foreground)", letterSpacing: "-0.02em" }}>
+                {medleyStep === "links" ? "Criar Medley · Passo 1" : "Criar Medley · Passo 2"}
+              </h3>
+              <button onClick={closeMedleyBuilder} className="btn-icon" aria-label="Fechar">
+                <IconX />
+              </button>
+            </div>
+
+            {medleyStep === "links" && (
+              <div className="p-4 space-y-3">
+                <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>
+                  Adicione os links do YouTube e arraste para ajustar a ordem do medley.
+                </p>
+                <Reorder.Group
+                  axis="y"
+                  values={medleyLinks}
+                  onReorder={setMedleyLinks}
+                  className="space-y-2"
+                >
+                  {medleyLinks.map((item, index) => (
+                    <Reorder.Item
+                      key={item.id}
+                      value={item}
+                      className="rounded-lg"
+                      style={{ background: "var(--surface-2)", border: "1px solid var(--border)", padding: "0.625rem" }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span style={{ color: "var(--foreground-subtle)" }}>
+                          <IconGrab />
+                        </span>
+                        <span className="text-xs w-4 text-center" style={{ color: "var(--foreground-subtle)" }}>
+                          {index + 1}
+                        </span>
+                        <input
+                          type="url"
+                          value={item.url}
+                          onChange={(e) => {
+                            setMedleyLinks((prev) =>
+                              prev.map((link) => (link.id === item.id ? { ...link, url: e.target.value } : link))
+                            );
+                          }}
+                          placeholder="https://youtube.com/watch?v=..."
+                          className="field-input flex-1"
+                        />
+                        <button
+                          onClick={() => removeMedleyLink(item.id)}
+                          className="btn-icon shrink-0"
+                          aria-label="Remover link"
+                        >
+                          <IconX />
+                        </button>
+                      </div>
+                    </Reorder.Item>
+                  ))}
+                </Reorder.Group>
+              </div>
+            )}
+
+            {medleyStep === "stanzas" && (
+              <div className="p-4 space-y-3">
+                <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>
+                  Arraste as estrofes para montar a ordem final do medley.
+                </p>
+
+                <Reorder.Group
+                  axis="y"
+                  values={medleyStanzas}
+                  onReorder={setMedleyStanzas}
+                  className="space-y-2 max-h-[48vh] overflow-y-auto pr-1"
+                >
+                  {medleyStanzas.map((stanza) => (
+                    <Reorder.Item
+                      key={stanza.id}
+                      value={stanza}
+                      className="rounded-lg cursor-grab active:cursor-grabbing"
+                      style={{
+                        background: activeMedleyStanza === stanza.id ? "var(--surface-3)" : "var(--surface-2)",
+                        border: `1px solid ${activeMedleyStanza === stanza.id ? "var(--border-hover)" : "var(--border)"}`,
+                        padding: "0.75rem",
+                      }}
+                      onClick={() => setActiveMedleyStanza(activeMedleyStanza === stanza.id ? null : stanza.id)}
+                    >
+                      <div className="flex items-start gap-2">
+                        <span style={{ color: "var(--foreground-subtle)", marginTop: "2px", flexShrink: 0 }}>
+                          <IconGrab />
+                        </span>
+                        <p className="text-xs leading-relaxed whitespace-pre-wrap flex-1" style={{ color: "var(--foreground-muted)" }}>
+                          {stanza.text}
+                        </p>
+                      </div>
+                      {activeMedleyStanza === stanza.id && (
+                        <div className="flex flex-wrap gap-2 mt-3 ml-5">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); duplicateMedleyStanza(stanza.id); }}
+                            className="btn-ghost text-xs py-1 px-2.5"
+                          >
+                            Duplicar
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); editMedleyStanza(stanza.id); }}
+                            className="btn-ghost text-xs py-1 px-2.5"
+                          >
+                            Editar texto
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); mergeMedleyWithNext(stanza.id); }}
+                            className="btn-ghost text-xs py-1 px-2.5"
+                          >
+                            Mesclar próxima
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); deleteMedleyStanza(stanza.id); }}
+                            className="btn-ghost text-xs py-1 px-2.5"
+                            style={{ color: "var(--destructive)", borderColor: "var(--destructive-border)" }}
+                          >
+                            Excluir
+                          </button>
+                        </div>
+                      )}
+                    </Reorder.Item>
+                  ))}
+                </Reorder.Group>
+              </div>
+            )}
+
+            <div className="px-5 py-3 flex items-center justify-between gap-2" style={{ borderTop: "1px solid var(--border)" }}>
+              {medleyStep === "links" ? (
+                <>
+                  <button onClick={addMedleyLink} className="btn-ghost text-xs gap-1.5">
+                    <IconPlus /> Adicionar link
+                  </button>
+                  <div className="flex gap-2">
+                    <button onClick={closeMedleyBuilder} className="btn-ghost text-xs">Cancelar</button>
+                    <button onClick={handleMedleyNextStep} className="btn-primary text-xs" disabled={medleyLoading}>
+                      {medleyLoading ? "Montando..." : "Próximo passo"}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => setMedleyStep("links")} className="btn-ghost text-xs">Voltar</button>
+                  <div className="flex gap-2">
+                    <button onClick={closeMedleyBuilder} className="btn-ghost text-xs">Cancelar</button>
+                    <button onClick={handleAddMedleyToRepertoire} className="btn-primary text-xs gap-1.5">
+                      <IconCheck /> Adicionar medley ao repertório
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: Nova tentativa de busca da letra ── */}
+      {retryModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.65)" }}
+        >
+          <div
+            className="w-full max-w-md rounded-xl overflow-hidden"
+            style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+          >
+            <div
+              className="px-5 py-4 flex items-center justify-between"
+              style={{ borderBottom: "1px solid var(--border)" }}
+            >
+              <h3 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
+                Buscar letra novamente
+              </h3>
+              <button
+                onClick={() => setRetryModalOpen(false)}
+                className="btn-icon"
+                aria-label="Fechar"
+              >
+                <IconX />
+              </button>
+            </div>
+
+            <form onSubmit={handleManualRetrySearch} className="p-4 space-y-3">
+              <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>
+                Digite o nome da música (ou no formato <b>Artista - Música</b>) para tentar uma nova busca.
+              </p>
+              <input
+                type="text"
+                value={manualSongName}
+                onChange={(e) => setManualSongName(e.target.value)}
+                placeholder="Ex: Fhop - Uma Vez"
+                className="field-input w-full"
+                required
+              />
+
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setRetryModalOpen(false)}
+                  className="btn-ghost text-xs"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={retryingSearch}
+                  className="btn-primary text-xs"
+                >
+                  {retryingSearch ? "Buscando..." : "Pesquisar de novo"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }
