@@ -139,6 +139,9 @@ export default function Home() {
   const [medleyStanzas, setMedleyStanzas] = useState<MedleyStanza[]>([]);
   const [activeMedleyStanza, setActiveMedleyStanza] = useState<string | null>(null);
   const [medleyTitle, setMedleyTitle] = useState("Medley");
+  const [retryModalOpen, setRetryModalOpen] = useState(false);
+  const [manualSongName, setManualSongName] = useState("");
+  const [retryingSearch, setRetryingSearch] = useState(false);
 
   // ── Hidratação única do localStorage ───────────────────────────────────
   const [hydrated, setHydrated] = useState(false);
@@ -372,6 +375,34 @@ export default function Home() {
     ]);
   }
 
+  async function handleManualRetrySearch(e: React.FormEvent) {
+    e.preventDefault();
+    if (!manualSongName.trim() || !url.trim()) return;
+
+    setRetryingSearch(true);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: url.trim(),
+          manualSongName: manualSongName.trim(),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Erro ao tentar nova busca.");
+      setData(json);
+      setRetryModalOpen(false);
+      setManualSongName("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao buscar novamente.");
+    } finally {
+      setRetryingSearch(false);
+    }
+  }
+
   function handleAddToRepertoire() {
     if (!data) return;
     const finalLyrics = editedLyrics ?? data.directLyrics ?? "";
@@ -555,12 +586,20 @@ export default function Home() {
                 style={{ color: "var(--foreground-subtle)" }}
               >
                 Letra não encontrada automaticamente.<br/>
-                <button
-                  onClick={startEditing}
-                  className="btn-ghost text-xs mt-3 gap-1.5"
-                >
-                  <IconEdit /> Inserir letra manualmente
-                </button>
+                <div className="flex items-center justify-center gap-2 mt-3">
+                  <button
+                    onClick={() => setRetryModalOpen(true)}
+                    className="btn-ghost text-xs gap-1.5"
+                  >
+                    <IconUpload /> Tentar com nome da música
+                  </button>
+                  <button
+                    onClick={startEditing}
+                    className="btn-ghost text-xs gap-1.5"
+                  >
+                    <IconEdit /> Inserir letra manualmente
+                  </button>
+                </div>
               </div>
             )}
 
@@ -985,6 +1024,66 @@ export default function Home() {
                 </>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: Nova tentativa de busca da letra ── */}
+      {retryModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.65)" }}
+        >
+          <div
+            className="w-full max-w-md rounded-xl overflow-hidden"
+            style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+          >
+            <div
+              className="px-5 py-4 flex items-center justify-between"
+              style={{ borderBottom: "1px solid var(--border)" }}
+            >
+              <h3 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
+                Buscar letra novamente
+              </h3>
+              <button
+                onClick={() => setRetryModalOpen(false)}
+                className="btn-icon"
+                aria-label="Fechar"
+              >
+                <IconX />
+              </button>
+            </div>
+
+            <form onSubmit={handleManualRetrySearch} className="p-4 space-y-3">
+              <p className="text-xs" style={{ color: "var(--foreground-muted)" }}>
+                Digite o nome da música (ou no formato <b>Artista - Música</b>) para tentar uma nova busca.
+              </p>
+              <input
+                type="text"
+                value={manualSongName}
+                onChange={(e) => setManualSongName(e.target.value)}
+                placeholder="Ex: Fhop - Uma Vez"
+                className="field-input w-full"
+                required
+              />
+
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setRetryModalOpen(false)}
+                  className="btn-ghost text-xs"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={retryingSearch}
+                  className="btn-primary text-xs"
+                >
+                  {retryingSearch ? "Buscando..." : "Pesquisar de novo"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
