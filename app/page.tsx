@@ -33,10 +33,10 @@ const KEYS = [
 ];
 
 /* ─ SVG Icons ─ */
-const IconUpload = () => (
+const IconSearch = () => (
   <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-    <path d="M8 10V2M5 5l3-3 3 3" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M2 13h12" strokeLinecap="round"/>
+    <circle cx="7" cy="7" r="4.5" />
+    <path d="M10.5 10.5L14 14" strokeLinecap="round"/>
   </svg>
 );
 const IconCheck = () => (
@@ -139,6 +139,8 @@ export default function Home() {
   useEffect(() => { if (hydrated) saveLS("ibf_current_key", selectedKey); }, [selectedKey, hydrated]);
   useEffect(() => { if (hydrated) saveLS("ibf_edited_lyrics", editedLyrics); }, [editedLyrics, hydrated]);
 
+  const inputIsUrl = /^https?:\/\//i.test(url) || /youtu\.?be/i.test(url);
+
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     if (!url.trim()) return;
@@ -148,13 +150,17 @@ export default function Home() {
     setEditState("idle");
     setEditedLyrics(null);
     setSelectedKey("Original");
-    setLoadingMsg("Buscando música no YouTube…");
+    setLoadingMsg(inputIsUrl ? "Buscando música no YouTube…" : "Procurando a letra…");
 
     try {
+      const payload = inputIsUrl
+        ? { url: url.trim() }
+        : { query: url.trim() };
+
       const res = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url.trim() }),
+        body: JSON.stringify(payload),
       });
       setLoadingMsg("Procurando a letra…");
       const json = await res.json();
@@ -213,7 +219,7 @@ export default function Home() {
         song: data.parsedSong || data.videoTitle,
         artist: data.parsedArtist || data.channel,
         key: selectedKey,
-        youtubeUrl: url,
+        youtubeUrl: inputIsUrl ? url : "",
         lyricsUrl: data.lyricsUrl ?? "",
         lyrics: finalLyrics,
         lyricsSource: (data.lyricsSource === "site" ? "site" : "none") as "site" | "drive" | "none",
@@ -270,18 +276,18 @@ export default function Home() {
             className="text-lg font-semibold mb-1"
             style={{ color: "var(--foreground)", letterSpacing: "-0.03em" }}
           >
-            {repertoire.length === 0 ? "Importar uma música" : "Adicionar outra música"}
+            {repertoire.length === 0 ? "Buscar uma música" : "Adicionar outra música"}
           </h1>
           <p className="text-xs mb-4" style={{ color: "var(--foreground-muted)" }}>
-            Cole o link do YouTube para buscar a letra automaticamente.
+            Cole um link do YouTube ou digite o nome da música.
           </p>
           <form onSubmit={handleSearch}>
             <div className="flex gap-2">
               <input
-                type="url"
+                type="text"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://youtube.com/watch?v=..."
+                placeholder="Link do YouTube ou nome da música..."
                 className="field-input flex-1"
                 required
               />
@@ -290,7 +296,7 @@ export default function Home() {
                 disabled={loading}
                 className="btn-primary shrink-0 gap-1.5"
               >
-                <IconUpload />
+                <IconSearch />
                 {loading ? "Buscando…" : "Buscar"}
               </button>
             </div>

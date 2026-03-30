@@ -4,6 +4,101 @@ const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
 /* ──────────────────────────────────────────────
+   Resultado unificado de busca de letra
+────────────────────────────────────────────── */
+export interface LyricsResult {
+  lyrics: string;
+  url: string;
+  source: string;
+}
+
+/* ──────────────────────────────────────────────
+   Busca paralela em todas as fontes
+   Executa em ondas: BR → Internacional → Google
+────────────────────────────────────────────── */
+export async function fetchLyricsParallel(
+  song: string,
+  artist: string,
+  artistCandidates: string[],
+  songCandidates: string[]
+): Promise<LyricsResult | null> {
+  const brTasks: Array<() => Promise<LyricsResult | null>> = [];
+  const intlTasks: Array<() => Promise<LyricsResult | null>> = [];
+
+  for (const a of artistCandidates) {
+    for (const s of songCandidates) {
+      const aSlug = slugifyForUrl(a);
+      const sSlug = slugifyForUrl(s);
+
+      if (aSlug && sSlug) {
+        const letrasUrl = `https://www.letras.mus.br/${aSlug}/${sSlug}/`;
+        brTasks.push(async () => {
+          const lyrics = await fetchLyricsFromLetras(letrasUrl);
+          return lyrics ? { lyrics, url: letrasUrl, source: "letras.mus.br" } : null;
+        });
+
+        const cifraUrl = `https://www.cifraclub.com.br/${aSlug}/${sSlug}/`;
+        brTasks.push(async () => {
+          const lyrics = await fetchLyricsFromCifraClub(cifraUrl);
+          return lyrics ? { lyrics, url: cifraUrl, source: "cifraclub.com.br" } : null;
+        });
+      }
+
+      brTasks.push(async () => {
+        const result = await fetchLyricsFromVagalume(s, a);
+        return result ? { ...result, source: "vagalume.com.br" } : null;
+      });
+
+      intlTasks.push(async () => {
+        const lyrics = await fetchLyricsFromOVH(s, a);
+        if (!lyrics) return null;
+        return {
+          lyrics,
+          url: `https://api.lyrics.ovh/v1/${encodeURIComponent(a)}/${encodeURIComponent(s)}`,
+          source: "lyrics.ovh",
+        };
+      });
+    }
+  }
+
+  // Onda 1: fontes BR em paralelo
+  const brResult = await raceForResult(brTasks);
+  if (brResult) return brResult;
+
+  // Onda 2: lyrics.ovh em paralelo
+  const intlResult = await raceForResult(intlTasks);
+  if (intlResult) return intlResult;
+
+  // Onda 3: Google Custom Search (último recurso)
+  const googleResult = await fetchLyricsViaGoogle(song, artist);
+  if (googleResult) return googleResult;
+
+  return null;
+}
+
+/** Executa todas as tasks em paralelo e retorna o primeiro resultado não-null */
+async function raceForResult(
+  tasks: Array<() => Promise<LyricsResult | null>>
+): Promise<LyricsResult | null> {
+  if (tasks.length === 0) return null;
+  const results = await Promise.allSettled(tasks.map((fn) => fn()));
+  for (const r of results) {
+    if (r.status === "fulfilled" && r.value) return r.value;
+  }
+  return null;
+}
+
+/** Slugify para URLs de sites de letras */
+function slugifyForUrl(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+/* ──────────────────────────────────────────────
    1. letras.mus.br
 ────────────────────────────────────────────── */
 export async function fetchLyricsFromLetras(url: string): Promise<string | null> {
