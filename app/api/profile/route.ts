@@ -8,7 +8,7 @@ export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
 
-  const userId = (session.user as any).id;
+  const userId = session.user.id;
   if (!userId) return NextResponse.json({ error: "Usuário inválido." }, { status: 401 });
 
   const user = await prisma.user.findUnique({
@@ -36,7 +36,7 @@ export async function GET() {
   const thisMonth = new Date();
   thisMonth.setDate(1);
   const playsThisMonth = user.songPlays.filter(
-    (p: any) => p.playedAt >= thisMonth
+    (p) => p.playedAt >= thisMonth
   ).length;
 
   return NextResponse.json({ ...user, playsThisMonth });
@@ -47,7 +47,7 @@ export async function PATCH(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
 
-  const userId = (session.user as any).id;
+  const userId = session.user.id;
   if (!userId) return NextResponse.json({ error: "Usuário inválido." }, { status: 401 });
 
   try {
