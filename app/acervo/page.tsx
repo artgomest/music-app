@@ -18,6 +18,12 @@ interface SongWithStats {
 
 const TAGS = ["KEY", "BPM", "GENRE", "WORSHIP", "HYMN", "CONTEMPORARY", "BALLAD"];
 
+const getDeterministicTag = (song: SongWithStats): string => {
+  const source = `${song.id}-${song.title}`;
+  const hash = Array.from(source).reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+  return TAGS[hash % TAGS.length];
+};
+
 export default function AcervoPage() {
   const { status } = useSession();
   const router = useRouter();
@@ -31,7 +37,6 @@ export default function AcervoPage() {
 
   useEffect(() => {
     if (status !== "authenticated") return;
-    setLoading(true);
     const timer = setTimeout(() => {
       fetch(`/api/songs?q=${encodeURIComponent(q)}`)
         .then((r) => {
@@ -52,11 +57,8 @@ export default function AcervoPage() {
     return () => clearTimeout(timer);
   }, [q, status]);
 
-  const randomTag = () => TAGS[Math.floor(Math.random() * TAGS.length)];
-
   return (
     <AppShell>
-      {/* Header */}
       <div className="mb-8">
         <h1
           className="text-4xl font-bold mb-2"
@@ -69,7 +71,6 @@ export default function AcervoPage() {
         </p>
       </div>
 
-      {/* Filter + Search bar */}
       <div className="flex flex-wrap items-center gap-3 mb-8">
         <div className="flex items-center gap-2 flex-wrap">
           <span
@@ -79,10 +80,7 @@ export default function AcervoPage() {
             ☰ Filters
           </span>
           {["KEY", "BPM", "GENRE"].map((f) => (
-            <span
-              key={f}
-              className="badge badge-amber cursor-pointer hover:opacity-80 transition-opacity"
-            >
+            <span key={f} className="badge badge-amber cursor-pointer hover:opacity-80 transition-opacity">
               {f}
             </span>
           ))}
@@ -96,22 +94,17 @@ export default function AcervoPage() {
               type="text"
               placeholder="Search by title or artist..."
               value={q}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e) => { setLoading(true); setQ(e.target.value); }}
               className="field-input pl-8"
             />
           </div>
         </div>
       </div>
 
-      {/* Grid */}
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {[...Array(8)].map((_, i) => (
-            <div
-              key={i}
-              className="sanctuary-card animate-pulse"
-              style={{ height: "260px" }}
-            />
+            <div key={i} className="sanctuary-card animate-pulse" style={{ height: "260px" }} />
           ))}
         </div>
       ) : songs.length === 0 ? (
@@ -125,51 +118,31 @@ export default function AcervoPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {songs.map((song) => {
-            const tag = randomTag();
-            const key = ["D Major", "G Major", "Bb Major", "B Major", "A Major"][
-              song.title.length % 5
-            ];
+            const tag = getDeterministicTag(song);
+            const key = ["D Major", "G Major", "Bb Major", "B Major", "A Major"][song.title.length % 5];
             const bpm = 60 + (song.title.charCodeAt(0) % 40);
 
             return (
-              <div
-                key={song.id}
-                className="sanctuary-card overflow-hidden cursor-pointer group transition-shadow hover:shadow-md"
-              >
-                {/* Cover image / placeholder */}
+              <div key={song.id} className="sanctuary-card overflow-hidden cursor-pointer group transition-shadow hover:shadow-md">
                 <div
                   className="relative h-36 w-full overflow-hidden"
                   style={{
                     background: `linear-gradient(135deg, hsl(${song.title.charCodeAt(0) * 3 % 360},30%,40%) 0%, hsl(${(song.title.charCodeAt(0) * 5) % 360},40%,25%) 100%)`,
                   }}
                 >
-                  <div className="absolute inset-0 flex items-center justify-center text-4xl opacity-60">
-                    🎵
-                  </div>
-                  {/* tag badge */}
+                  <div className="absolute inset-0 flex items-center justify-center text-4xl opacity-60">🎵</div>
                   <span
                     className="absolute top-2.5 left-2.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
-                    style={{
-                      background: "rgba(255,255,255,0.15)",
-                      backdropFilter: "blur(4px)",
-                      color: "#fff",
-                    }}
+                    style={{ background: "rgba(255,255,255,0.15)", backdropFilter: "blur(4px)", color: "#fff" }}
                   >
                     {tag}
                   </span>
-                  {/* Heart */}
-                  <button className="absolute top-2.5 right-2.5 text-white opacity-70 hover:opacity-100 text-sm">
-                    ♡
-                  </button>
+                  <button className="absolute top-2.5 right-2.5 text-white opacity-70 hover:opacity-100 text-sm">♡</button>
                 </div>
 
-                {/* Info */}
                 <div className="p-3">
                   <div className="flex items-start justify-between gap-1 mb-0.5">
-                    <h3
-                      className="font-semibold text-sm leading-tight line-clamp-2"
-                      style={{ color: "var(--foreground)" }}
-                    >
+                    <h3 className="font-semibold text-sm leading-tight line-clamp-2" style={{ color: "var(--foreground)" }}>
                       {song.title}
                     </h3>
                     <button className="text-[var(--muted-foreground)] text-sm shrink-0">♡</button>

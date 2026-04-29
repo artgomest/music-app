@@ -1,6 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { DM_Serif_Display, Inter } from "next/font/google";
+
+
+const inter = Inter({ subsets: ["latin"], weight: ["400", "500", "600"] });
+const dmSerif = DM_Serif_Display({ subsets: ["latin"], weight: ["400"] });
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -29,7 +34,7 @@ export default async function LetraPage({ params }: Props) {
   const css = `
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: 'Inter', sans-serif;
+      font-family: var(--font-inter), sans-serif;
       background: #0a0a0f;
       color: #e5e5f0;
       min-height: 100vh;
@@ -44,12 +49,15 @@ export default async function LetraPage({ params }: Props) {
       display: flex; align-items: center; justify-content: space-between;
       z-index: 10;
     }
-    .brand { font-family: 'DM Serif Display', serif; font-size: 15px; color: #9b9bb0; letter-spacing: 0.05em; }
+    .brand { font-family: var(--font-serif), serif; font-size: 15px; color: #9b9bb0; letter-spacing: 0.05em; }
     .song-info { padding: 40px 24px 28px; max-width: 640px; margin: 0 auto; }
-    .song-title { font-family: 'DM Serif Display', serif; font-size: 28px; line-height: 1.2; color: #f0f0ff; letter-spacing: -0.02em; margin-bottom: 6px; }
+    .song-title { font-family: var(--font-serif), serif; font-size: 28px; line-height: 1.2; color: #f0f0ff; letter-spacing: -0.02em; margin-bottom: 6px; }
     .song-artist { font-size: 14px; color: #6b6b80; margin-bottom: 20px; }
     .yt-link { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #6b6b80; text-decoration: none; border: 1px solid rgba(255,255,255,0.08); padding: 5px 12px; border-radius: 20px; }
     .yt-link:hover { color: #e5e5f0; border-color: rgba(255,255,255,0.2); }
+    .study-link { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #6b6b80; text-decoration: none; border: 1px solid rgba(255,255,255,0.08); padding: 5px 12px; border-radius: 20px; margin-left: 8px; }
+    .study-link:hover { color: #c084fc; border-color: rgba(192,132,252,0.3); }
+    .links-row { display: flex; align-items: center; flex-wrap: wrap; gap: 0; }
     .divider { height: 1px; background: rgba(255,255,255,0.06); max-width: 640px; margin: 0 auto 32px; }
     .lyrics { max-width: 640px; margin: 0 auto; padding: 0 24px; }
     .stanza { margin-bottom: 28px; }
@@ -66,12 +74,8 @@ export default async function LetraPage({ params }: Props) {
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: css }} />
-      <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=DM+Serif+Display&display=swap"
-        rel="stylesheet"
-      />
 
-      <header className="header">
+      <header className={`header ${inter.variable} ${dmSerif.variable}`}>
         <span className="brand">The Sanctuary</span>
         <span style={{ fontSize: "11px", color: "#4a4a5a", letterSpacing: "0.08em" }}>
           IBF MUSIC HUB
@@ -81,14 +85,23 @@ export default async function LetraPage({ params }: Props) {
       <div className="song-info">
         <h1 className="song-title">{song.title}</h1>
         <p className="song-artist">{song.artist}</p>
-        {song.youtubeUrl && (
-          <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" className="yt-link">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M23 7s-.3-2-1.2-2.8c-1.1-1.2-2.4-1.2-3-1.3C16.2 2.8 12 2.8 12 2.8s-4.2 0-6.8.1c-.6.1-1.9.1-3 1.3C1.3 5 1 7 1 7S.7 9.1.7 11.2v2c0 2.1.3 4.2.3 4.2s.3 2 1.2 2.8c1.1 1.2 2.6 1.1 3.3 1.2C7.2 21.5 12 21.5 12 21.5s4.2 0 6.8-.2c.6-.1 1.9-.1 3-1.2.9-.8 1.2-2.8 1.2-2.8s.3-2.1.3-4.2v-2C23.3 9.1 23 7 23 7zM9.7 14.7V9.3l5.6 2.7-5.6 2.7z"/>
+        <div className="links-row">
+          {song.youtubeUrl && (
+            <a href={song.youtubeUrl} target="_blank" rel="noopener noreferrer" className="yt-link">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M23 7s-.3-2-1.2-2.8c-1.1-1.2-2.4-1.2-3-1.3C16.2 2.8 12 2.8 12 2.8s-4.2 0-6.8.1c-.6.1-1.9.1-3 1.3C1.3 5 1 7 1 7S.7 9.1.7 11.2v2c0 2.1.3 4.2.3 4.2s.3 2 1.2 2.8c1.1 1.2 2.6 1.1 3.3 1.2C7.2 21.5 12 21.5 12 21.5s4.2 0 6.8-.2c.6-.1 1.9-.1 3-1.2.9-.8 1.2-2.8 1.2-2.8s.3-2.1.3-4.2v-2C23.3 9.1 23 7 23 7zM9.7 14.7V9.3l5.6 2.7-5.6 2.7z"/>
+              </svg>
+              Ver no YouTube
+            </a>
+          )}
+          <a href={`/estudo/${song.id}`} className="study-link">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
             </svg>
-            Ver no YouTube
+            Material de Estudo
           </a>
-        )}
+        </div>
       </div>
 
       <div className="divider" />

@@ -43,7 +43,7 @@ Regras:
 
 function fallbackParse(title: string, channel: string): SongInfo {
   // Remove sufixos comuns
-  let clean = title
+  const clean = title
     .replace(/\(official\s*(music\s*)?video\)/gi, "")
     .replace(/\(ao vivo\)/gi, "")
     .replace(/\[hd\]/gi, "")
