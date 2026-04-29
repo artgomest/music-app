@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSession, signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
@@ -132,7 +132,7 @@ export default function DashboardPage() {
             <div className="sanctuary-card p-6">
               <p className="section-label mb-3">Quick Tip</p>
               <p className="text-xs italic leading-relaxed" style={{ color: "var(--muted-foreground)" }}>
-                "The goal of sacred music is not to impress, but to facilitate a moment of peace and reflection."
+                &quot;The goal of sacred music is not to impress, but to facilitate a moment of peace and reflection.&quot;
               </p>
             </div>
           </div>

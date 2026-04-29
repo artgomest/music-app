@@ -1,6 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { DM_Serif_Display, Inter } from "next/font/google";
+
+
+const inter = Inter({ subsets: ["latin"], weight: ["400", "500", "600"] });
+const dmSerif = DM_Serif_Display({ subsets: ["latin"], weight: ["400"] });
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -29,7 +34,7 @@ export default async function LetraPage({ params }: Props) {
   const css = `
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: 'Inter', sans-serif;
+      font-family: var(--font-inter), sans-serif;
       background: #0a0a0f;
       color: #e5e5f0;
       min-height: 100vh;
@@ -44,9 +49,9 @@ export default async function LetraPage({ params }: Props) {
       display: flex; align-items: center; justify-content: space-between;
       z-index: 10;
     }
-    .brand { font-family: 'DM Serif Display', serif; font-size: 15px; color: #9b9bb0; letter-spacing: 0.05em; }
+    .brand { font-family: var(--font-serif), serif; font-size: 15px; color: #9b9bb0; letter-spacing: 0.05em; }
     .song-info { padding: 40px 24px 28px; max-width: 640px; margin: 0 auto; }
-    .song-title { font-family: 'DM Serif Display', serif; font-size: 28px; line-height: 1.2; color: #f0f0ff; letter-spacing: -0.02em; margin-bottom: 6px; }
+    .song-title { font-family: var(--font-serif), serif; font-size: 28px; line-height: 1.2; color: #f0f0ff; letter-spacing: -0.02em; margin-bottom: 6px; }
     .song-artist { font-size: 14px; color: #6b6b80; margin-bottom: 20px; }
     .yt-link { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #6b6b80; text-decoration: none; border: 1px solid rgba(255,255,255,0.08); padding: 5px 12px; border-radius: 20px; }
     .yt-link:hover { color: #e5e5f0; border-color: rgba(255,255,255,0.2); }
@@ -69,12 +74,8 @@ export default async function LetraPage({ params }: Props) {
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: css }} />
-      <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=DM+Serif+Display&display=swap"
-        rel="stylesheet"
-      />
 
-      <header className="header">
+      <header className={`header ${inter.variable} ${dmSerif.variable}`}>
         <span className="brand">The Sanctuary</span>
         <span style={{ fontSize: "11px", color: "#4a4a5a", letterSpacing: "0.08em" }}>
           IBF MUSIC HUB

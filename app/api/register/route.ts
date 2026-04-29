@@ -26,12 +26,12 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ id: user.id }, { status: 201 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Registration detail error:", error);
     return NextResponse.json(
       { 
         error: "Erro ao criar conta.", 
-        details: process.env.NODE_ENV === "development" ? error.message : undefined 
+        details: process.env.NODE_ENV === "development" && error instanceof Error ? error.message : undefined 
       }, 
       { status: 500 }
     );
